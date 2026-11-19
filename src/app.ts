@@ -13,7 +13,7 @@ const offsetArg =
 	(args.includes("--offset") ? args[args.indexOf("--offset") + 1] : undefined)
 const LYRICS_OFFSET = Number(offsetArg ?? process.env.CIDER_LYRICS_OFFSET ?? 0)
 if (!Number.isFinite(LYRICS_OFFSET)) {
-	console.error("Offset phải là số giây, ví dụ: --offset 0.25 hoặc --offset=-0.15")
+	console.error("Offset must be a number of seconds, e.g. --offset 0.25 or --offset=-0.15")
 	process.exit(2)
 }
 
@@ -46,7 +46,7 @@ async function getToken(): Promise<string> {
 	if (process.env.CIDER_API_TOKEN) return process.env.CIDER_API_TOKEN
 	const file = Bun.file(TOKEN_PATH)
 	if (await file.exists()) return (await file.text()).trim()
-	console.error("Chưa có token. Chạy `bun run start --auth` để xin quyền Lyrics từ Cider.")
+	console.error("No token found. Run `bun run start --auth` to request the Lyrics scope from Cider.")
 	process.exit(1)
 }
 
@@ -58,9 +58,9 @@ else if (args.includes("--auth")) {
 			{ baseUrl: BASE_URL },
 		)
 		await saveToken(token)
-		console.log(`Đã lưu token vào ${TOKEN_PATH}. Quyền được cấp: ${scopes.join(", ") || "không có"}`)
+		console.log(`Token saved to ${TOKEN_PATH}. Granted scopes: ${scopes.join(", ") || "none"}`)
 	} catch (error) {
-		console.error(`Không xin được token: ${error instanceof Error ? error.message : error}`)
+		console.error(`Could not request a token: ${error instanceof Error ? error.message : error}`)
 		process.exit(1)
 	}
 } else {
@@ -73,11 +73,11 @@ else if (args.includes("--auth")) {
 			const document = data.ttml || toAppleTtml(data)
 			if (target && !target.startsWith("--")) {
 				await Bun.write(target, document)
-				console.log(`Đã ghi Apple TTML vào ${target}`)
+				console.log(`Apple TTML written to ${target}`)
 			} else process.stdout.write(document)
 		} else await runPlayer(cider, BASE_URL, LYRICS_OFFSET)
 	} catch (error) {
-		console.error(`Lỗi: ${error instanceof Error ? error.message : error}`)
+		console.error(`Error: ${error instanceof Error ? error.message : error}`)
 		process.exit(1)
 	}
 }

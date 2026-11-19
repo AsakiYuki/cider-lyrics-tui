@@ -11,7 +11,11 @@ A terminal lyrics display synchronized with the track playing in Cider. It reads
 - Reads TTML from Cider and uses its timing instead of the separate word-timing field.
 - Highlights lyrics progressively from left to right, down to individual characters when timing is available.
 - Uses line timing as a fallback when word or span timing is unavailable.
-- Displays background vocals underneath the corresponding lead line and honors their timing.
+- Shows background vocals under the lead line they belong to as soon as that line appears in the lyric view. Background vocals keep playing until their own timing ends, even if the lead line finishes first.
+- Hides completed lead lyrics and wraps long lyrics to fit the terminal width.
+- Shows lyric contributor and writer credits in the header, wrapping them when needed.
+- Adds a voice-aligned `. → o → 0` wait animation between lyrics when the gap is longer than three seconds.
+- Keeps the `Ctrl+C` exit hint at the bottom of the terminal.
 - Follows playback and track changes in real time.
 - Supports a playback display offset and exporting the current lyrics as Apple TTML.
 

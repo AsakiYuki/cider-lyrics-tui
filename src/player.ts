@@ -32,7 +32,7 @@ export async function runPlayer(cider: Cider, baseUrl: string, lyricsOffset: num
 	let lastTimeFetchAt = 0
 	let lastStateFetchAt = 0
 	let previous = ""
-	let status = "Ctrl+C để thoát"
+	let status = "Press Ctrl+C to exit"
 	let stopped = false
 	let loadedTrackKey = ""
 	let refreshRequested = false
@@ -45,7 +45,7 @@ export async function runPlayer(cider: Cider, baseUrl: string, lyricsOffset: num
 		const position = playbackPosition() + lyricsOffset
 		const width = Math.max(1, (process.stdout.columns || 80) - 1)
 		const height = process.stdout.rows || 24
-		const title = track ? `\x1b[1m${track.name}\x1b[0m — ${track.artistName}` : "Đang chờ bài hát trên Cider…"
+		const title = track ? `\x1b[1m${track.name}\x1b[0m — ${track.artistName}` : "Waiting for a track in Cider…"
 		const syncLabel = lyrics ? `${lyrics.source.provider} · ${lyrics.source.timingType} timing` : "Cider lyrics"
 		const contributor = lyrics?.source.contributorName?.trim()
 		const writers = lyrics?.writers?.filter(name => name.trim()) ?? []
@@ -62,9 +62,9 @@ export async function runPlayer(cider: Cider, baseUrl: string, lyricsOffset: num
 		let waitingGap = false
 
 		if (!track) {
-			screen.push("Đang chờ bài hát…")
+			screen.push("Waiting for a track…")
 		} else if (!displayLines.length) {
-			screen.push(status === "Ctrl+C để thoát" ? "Đang tải lyrics…" : status)
+			screen.push(status === "Press Ctrl+C to exit" ? "Loading lyrics…" : status)
 		} else {
 			const isBackgroundActive = (line: TtmlLine) => {
 				if (line.background) return position <= line.end
@@ -163,12 +163,12 @@ export async function runPlayer(cider: Cider, baseUrl: string, lyricsOffset: num
 			clockNeedsSync = true
 			lyrics = undefined
 			displayLines = []
-			status = "Đang chờ bài hát…"
+			status = "Waiting for a track…"
 			draw()
 			return
 		}
 		if (!changed && displayLines.length) {
-			status = "Ctrl+C để thoát"
+			status = "Press Ctrl+C to exit"
 			draw()
 			return
 		}
@@ -184,7 +184,7 @@ export async function runPlayer(cider: Cider, baseUrl: string, lyricsOffset: num
 		}
 		lyrics = undefined
 		displayLines = []
-		status = "Đang tải lyrics…"
+		status = "Loading lyrics…"
 		draw()
 
 		const controller = new AbortController()
@@ -198,7 +198,7 @@ export async function runPlayer(cider: Cider, baseUrl: string, lyricsOffset: num
 					(nextTrack as typeof nextTrack & { id?: string; songId?: string }).id ??
 					(nextTrack as typeof nextTrack & { songId?: string }).songId
 				if (trackId && data.id && trackId !== data.id) {
-					lastError = new Error("Cider chưa cập nhật lyrics cho bài mới.")
+					lastError = new Error("Cider has not updated the lyrics for the new track yet.")
 					if (attempt < 4) {
 						await Bun.sleep(350)
 						continue
@@ -241,8 +241,8 @@ export async function runPlayer(cider: Cider, baseUrl: string, lyricsOffset: num
 								background: Boolean(isBackground),
 							}
 						}))
-				if (!displayLines.length) throw new Error("Lyrics trống hoặc TTML không có thẻ <p>.")
-				status = "Ctrl+C để thoát"
+				if (!displayLines.length) throw new Error("Lyrics are empty or the TTML contains no <p> elements.")
+				status = "Press Ctrl+C to exit"
 				return
 			} catch (error) {
 				if (controller.signal.aborted) return
@@ -253,7 +253,7 @@ export async function runPlayer(cider: Cider, baseUrl: string, lyricsOffset: num
 			}
 		}
 		if (!controller.signal.aborted)
-			status = `Không lấy được lyrics: ${lastError instanceof Error ? lastError.message : String(lastError ?? "bài này không có lyrics")}`
+			status = `Could not load lyrics: ${lastError instanceof Error ? lastError.message : String(lastError ?? "no lyrics are available for this track")}`
 	}
 	const refreshTrack = () => {
 		if (stopped) return Promise.resolve()
@@ -266,7 +266,7 @@ export async function runPlayer(cider: Cider, baseUrl: string, lyricsOffset: num
 				try {
 					await refreshOnce()
 				} catch (error) {
-					status = `Lỗi playback: ${error instanceof Error ? error.message : error}`
+					status = `Playback error: ${error instanceof Error ? error.message : error}`
 				}
 				draw()
 			}
