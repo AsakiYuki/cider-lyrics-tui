@@ -67,7 +67,7 @@ export async function runPlayer(cider: Cider, baseUrl: string, lyricsOffset: num
 			screen.push(status === "Ctrl+C để thoát" ? "Đang tải lyrics…" : status)
 		} else {
 			const isBackgroundActive = (line: TtmlLine) => {
-				if (line.background) return position >= (line.visibleFrom ?? line.start) && position <= line.end
+				if (line.background) return position <= line.end
 				const hasTimedSpans = line.segments.some(segment => segment.start !== line.start || segment.end !== line.end)
 				return hasTimedSpans
 					? line.segments.some(segment => segment.text.trim() && position >= segment.start && position <= segment.end)

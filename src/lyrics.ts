@@ -53,11 +53,11 @@ export interface TtmlSegment {
 export interface TtmlLine {
 	start: number
 	end: number
-	visibleFrom?: number
 	text: string
 	segments: TtmlSegment[]
 	voice: number
 	background: boolean
+	paragraphId?: number
 }
 interface XmlNode {
 	name: string
@@ -166,8 +166,10 @@ export function parseTtml(ttml: string): TtmlLine[] {
 		for (const child of node.children) if (typeof child !== "string") getTimedBounds(child, bounds)
 	}
 	const result: TtmlLine[] = []
+	let paragraphId = 0
 	const visit = (node: XmlNode) => {
 		if (node.name === "p") {
+			const currentParagraphId = paragraphId++
 			const bounds: Array<{ start: number; end: number }> = []
 			getTimedBounds(node, bounds)
 			const spanStart = bounds.length ? Math.min(...bounds.map(bound => bound.start)) : undefined
@@ -260,6 +262,7 @@ export function parseTtml(ttml: string): TtmlLine[] {
 							segments: foregroundSegments,
 							voice,
 							background: false,
+							paragraphId: currentParagraphId,
 						})
 					if (backgroundText)
 						result.push({
@@ -269,6 +272,7 @@ export function parseTtml(ttml: string): TtmlLine[] {
 							segments: backgroundSegments,
 							voice,
 							background: true,
+							paragraphId: currentParagraphId,
 						})
 				} else {
 					const cleanedSegments = background
@@ -283,6 +287,7 @@ export function parseTtml(ttml: string): TtmlLine[] {
 						segments: cleanedSegments,
 						voice,
 						background,
+						paragraphId: currentParagraphId,
 					})
 				}
 			}
@@ -300,21 +305,25 @@ export function attachBackgroundLines(result: TtmlLine[]) {
 	const attached = new Map<TtmlLine, TtmlLine[]>()
 	const unattached: TtmlLine[] = []
 	for (const backgroundLine of backing) {
-		let closest: TtmlLine | undefined
+		let closest =
+			backgroundLine.paragraphId === undefined
+				? undefined
+				: foreground.find(line => line.paragraphId === backgroundLine.paragraphId)
 		let bestOverlap = -1
 		let bestDistance = Number.POSITIVE_INFINITY
-		for (const line of foreground) {
-			const overlap = Math.max(0, Math.min(line.end, backgroundLine.end) - Math.max(line.start, backgroundLine.start))
-			const distance = Math.abs(line.start - backgroundLine.start)
-			if (overlap > bestOverlap || (overlap === bestOverlap && distance < bestDistance)) {
-				closest = line
-				bestOverlap = overlap
-				bestDistance = distance
+		if (!closest) {
+			for (const line of foreground) {
+				const overlap = Math.max(0, Math.min(line.end, backgroundLine.end) - Math.max(line.start, backgroundLine.start))
+				const distance = Math.abs(line.start - backgroundLine.start)
+				if (overlap > bestOverlap || (overlap === bestOverlap && distance < bestDistance)) {
+					closest = line
+					bestOverlap = overlap
+					bestDistance = distance
+				}
 			}
 		}
 		if (!closest) unattached.push(backgroundLine)
 		else {
-			backgroundLine.visibleFrom = closest.start
 			attached.set(closest, [...(attached.get(closest) ?? []), backgroundLine])
 		}
 	}
