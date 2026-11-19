@@ -90,7 +90,7 @@ export async function runPlayer(cider: Cider, baseUrl: string, lyricsOffset: num
 				!lineIsActive &&
 				!backgroundVocalActive &&
 				Boolean(nextMain) &&
-				nextMain!.start - waitStart > 1 &&
+				nextMain!.start - waitStart > 3 &&
 				position >= waitStart &&
 				position < nextMain!.start
 
