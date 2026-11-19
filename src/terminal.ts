@@ -20,6 +20,55 @@ export function terminalWidth(value: string) {
 	return width
 }
 
+export function wrapTerminalText(value: string, maxWidth: number) {
+	type Glyph = { text: string; width: number; whitespace: boolean }
+	const glyphs: Glyph[] = []
+	let pendingAnsi = ""
+	for (const token of value.match(/\x1b\[[0-?]*[ -/]*[@-~]|[\s\S]/gu) ?? []) {
+		if (token.startsWith("\x1b[")) {
+			pendingAnsi += token
+			continue
+		}
+		glyphs.push({ text: pendingAnsi + token, width: terminalWidth(token), whitespace: /\s/u.test(token) })
+		pendingAnsi = ""
+	}
+	if (pendingAnsi && glyphs.length) glyphs[glyphs.length - 1]!.text += pendingAnsi
+
+	const width = Math.max(1, maxWidth)
+	const rows: string[] = []
+	let row = ""
+	let rowWidth = 0
+	let index = 0
+	while (index < glyphs.length) {
+		const whitespace = glyphs[index]!.whitespace
+		const group: Glyph[] = []
+		while (index < glyphs.length && glyphs[index]!.whitespace === whitespace) group.push(glyphs[index++]!)
+		const groupWidth = group.reduce((sum, glyph) => sum + glyph.width, 0)
+		if (whitespace) {
+			let nextWordWidth = 0
+			for (let next = index; next < glyphs.length && !glyphs[next]!.whitespace; next++)
+				nextWordWidth += glyphs[next]!.width
+			if (rowWidth + groupWidth + nextWordWidth > width) continue
+		}
+		if (!whitespace && rowWidth > 0 && rowWidth + groupWidth > width) {
+			rows.push(row)
+			row = ""
+			rowWidth = 0
+		}
+		for (const glyph of group) {
+			if (rowWidth + glyph.width > width && rowWidth > 0) {
+				rows.push(row)
+				row = ""
+				rowWidth = 0
+			}
+			row += glyph.text
+			rowWidth += glyph.width
+		}
+	}
+	if (row || rows.length === 0) rows.push(row)
+	return rows
+}
+
 export function placeVoiceLine(line: TtmlLine, content: string, width: number) {
 	if (line.voice % 2 !== 0) return content
 	return `${" ".repeat(Math.max(0, width - terminalWidth(content)))}${content}`

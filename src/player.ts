@@ -7,7 +7,7 @@ import {
 	stripBackgroundParens,
 	type TtmlLine,
 } from "./lyrics.ts"
-import { CiderPlaybackSocket, placeVoiceLine, TerminalUI, terminalWidth } from "./terminal.ts"
+import { CiderPlaybackSocket, placeVoiceLine, TerminalUI, terminalWidth, wrapTerminalText } from "./terminal.ts"
 
 const UI_TICK_MS = 10
 const PLAYBACK_SYNC_MS = 100
@@ -43,18 +43,29 @@ export async function runPlayer(cider: Cider, baseUrl: string, lyricsOffset: num
 
 	const render = () => {
 		const position = playbackPosition() + lyricsOffset
+		const width = Math.max(1, (process.stdout.columns || 80) - 1)
+		const height = process.stdout.rows || 24
 		const title = track ? `\x1b[1m${track.name}\x1b[0m — ${track.artistName}` : "Đang chờ bài hát trên Cider…"
 		const syncLabel = lyrics ? `${lyrics.source.provider} · ${lyrics.source.timingType} timing` : "Cider lyrics"
-		const screen = [
+		const contributor = lyrics?.source.contributorName?.trim()
+		const writers = lyrics?.writers?.filter(name => name.trim()) ?? []
+		const header = [
 			title,
 			`\x1b[90m${syncLabel}\x1b[0m`,
-			"─".repeat(Math.max(12, Math.min(48, (process.stdout.columns || 80) - 1))),
+			...(contributor ? [`Contributor: ${contributor}`] : []),
+			...(writers.length ? [`Written by: ${writers.join(", ")}`] : []),
+			"─".repeat(Math.max(1, Math.min(48, width))),
 			"",
-		]
+		].flatMap(line => wrapTerminalText(line, width)).slice(0, Math.max(1, height - 3))
+		const screen = [...header]
+		const bodyCapacity = Math.max(1, height - header.length - 1)
 		let waitingGap = false
-		if (!track) screen.push("Đang chờ bài hát…")
-		else if (!displayLines.length) screen.push(status === "Ctrl+C để thoát" ? "Đang tải lyrics…" : status)
-		else {
+
+		if (!track) {
+			screen.push("Đang chờ bài hát…")
+		} else if (!displayLines.length) {
+			screen.push(status === "Ctrl+C để thoát" ? "Đang tải lyrics…" : status)
+		} else {
 			const isBackgroundActive = (line: TtmlLine) => {
 				if (line.background) return position >= (line.visibleFrom ?? line.start) && position <= line.end
 				const hasTimedSpans = line.segments.some(segment => segment.start !== line.start || segment.end !== line.end)
@@ -62,7 +73,9 @@ export async function runPlayer(cider: Cider, baseUrl: string, lyricsOffset: num
 					? line.segments.some(segment => segment.text.trim() && position >= segment.start && position <= segment.end)
 					: position >= line.start && position <= line.end
 			}
-			const visibleLines = displayLines.filter(line => !line.background || isBackgroundActive(line))
+			const visibleLines = displayLines.filter(line =>
+				line.background ? isBackgroundActive(line) : line.end >= position,
+			)
 			const foregroundLines = displayLines.filter(line => !line.background)
 			const previousMain = foregroundLines.findLast(line => line.end <= position)
 			const nextMain = foregroundLines.find(line => line.start > position)
@@ -79,37 +92,44 @@ export async function runPlayer(cider: Cider, baseUrl: string, lyricsOffset: num
 				nextMain!.start - previousMain!.end > 1 &&
 				position >= previousMain!.end &&
 				position < nextMain!.start
-			const index = visibleLines.findIndex(line => position >= line.start && position <= line.end)
-			const next = visibleLines.findIndex(line => line.start > position)
-			const current = index < 0 ? (next < 0 ? visibleLines.length - 1 : next) : index
-			const capacity = Math.max(1, (process.stdout.rows || 24) - 6)
-			const lineCapacity = Math.max(1, capacity - (waitingGap ? 1 : 0))
-			const start = Math.max(0, Math.min(visibleLines.length - lineCapacity, current - Math.floor(lineCapacity / 2)))
-			const slice = visibleLines.slice(start, start + lineCapacity)
-			const rows = slice.map(line => {
+
+			const currentLine = visibleLines.findIndex(line => position >= line.start && position <= line.end)
+			const nextLine = visibleLines.findIndex(line => line.start > position)
+			const current = currentLine >= 0 ? currentLine : nextLine >= 0 ? nextLine : visibleLines.length - 1
+			const rowsByLine = visibleLines.map(line => {
 				const rendered = renderTtmlLine(line, position).replaceAll("\n", " ")
-				return placeVoiceLine(line, rendered, Math.max(1, (process.stdout.columns || 80) - 1))
+				const wrapped = wrapTerminalText(rendered, width)
+				return wrapped.map((row, index) => {
+					const content = line.background && index > 0 ? `  ${row}` : row
+					return placeVoiceLine(line, content, width)
+				})
 			})
+			const lineRowStart: number[] = []
+			const allRows = rowsByLine.flatMap((rows, index) => {
+				lineRowStart[index] = lineRowStart[index - 1] === undefined ? 0 : lineRowStart[index - 1]! + rowsByLine[index - 1]!.length
+				return rows
+			})
+			const capacity = Math.max(1, bodyCapacity - (waitingGap ? 1 : 0))
+			const activeRow = current >= 0 ? lineRowStart[current]! + Math.floor(rowsByLine[current]!.length / 2) : 0
+			const firstRow = Math.max(0, Math.min(allRows.length - capacity, activeRow - Math.floor(capacity / 2)))
+			const rows = allRows.slice(firstRow, firstRow + capacity)
+
 			if (waitingGap) {
-				const nextIndex = visibleLines.indexOf(nextMain!)
-				const previousIndex = visibleLines.indexOf(previousMain!)
-				let insertAt =
-					nextIndex >= start && nextIndex < start + slice.length
-						? nextIndex - start
-						: previousIndex >= start && previousIndex < start + slice.length
-							? previousIndex - start + 1
-							: rows.length
+				const nextMainIndex = visibleLines.indexOf(nextMain!)
+				const nextMainRow = nextMainIndex >= 0 ? lineRowStart[nextMainIndex]! : firstRow + rows.length
+				const insertAt = Math.max(0, Math.min(rows.length, nextMainRow - firstRow))
 				const pulse = Math.floor(Date.now() / 220) % 3
 				const dots = [0, 1, 2].map(i => (i === pulse ? "\x1b[97;1m.\x1b[0m" : "\x1b[90m.\x1b[0m")).join(" ")
-				const wait = dots
-				const width = process.stdout.columns || 80
-				const centered = `${" ".repeat(Math.max(0, Math.floor((width - terminalWidth(wait)) / 2)))}${wait}`
+				const centered = `${" ".repeat(Math.max(0, Math.floor((width - terminalWidth(dots)) / 2)))}${dots}`
 				rows.splice(insertAt, 0, centered)
 			}
 			screen.push(...rows)
 		}
-		screen.push("", `\x1b[90m${status}\x1b[0m`)
-		return screen
+
+		const footer = `\x1b[90m${status}\x1b[0m`
+		const bottomPadding = Math.max(0, height - screen.length - 1)
+		screen.push(...Array.from({ length: bottomPadding }, () => ""), footer)
+		return screen.slice(0, height)
 	}
 	const draw = () => {
 		const output = render()
