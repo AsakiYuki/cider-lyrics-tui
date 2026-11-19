@@ -2,6 +2,8 @@
 
 A terminal lyrics display synchronized with the track playing in Cider. It reads Apple TTML lyrics from Cider and renders timed lyrics in a live terminal interface.
 
+![Cider Lyrics TUI preview](preview/preview.png)
+
 > **Requirement:** This tool is made for the **Cider 2 desktop app by Cider Collective**. Install Cider from [cider.sh](https://cider.sh), keep it running, and play a track there. This CLI connects to Cider's local API; it does not connect directly to Apple Music.
 
 ## Features
