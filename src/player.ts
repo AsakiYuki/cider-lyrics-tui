@@ -7,7 +7,7 @@ import {
 	stripBackgroundParens,
 	type TtmlLine,
 } from "./lyrics.ts"
-import { CiderPlaybackSocket, placeVoiceLine, TerminalUI, terminalWidth, wrapTerminalText } from "./terminal.ts"
+import { CiderPlaybackSocket, placeVoiceLine, TerminalUI, wrapTerminalText } from "./terminal.ts"
 
 const UI_TICK_MS = 10
 const PLAYBACK_SYNC_MS = 100
@@ -79,6 +79,7 @@ export async function runPlayer(cider: Cider, baseUrl: string, lyricsOffset: num
 			const foregroundLines = displayLines.filter(line => !line.background)
 			const previousMain = foregroundLines.findLast(line => line.end <= position)
 			const nextMain = foregroundLines.find(line => line.start > position)
+			const waitStart = previousMain?.end ?? 0
 			const lineIsActive = foregroundLines.some(line => position >= line.start && position <= line.end)
 			const backgroundVocalActive = displayLines.some(
 				line =>
@@ -88,9 +89,9 @@ export async function runPlayer(cider: Cider, baseUrl: string, lyricsOffset: num
 			waitingGap =
 				!lineIsActive &&
 				!backgroundVocalActive &&
-				Boolean(previousMain && nextMain) &&
-				nextMain!.start - previousMain!.end > 1 &&
-				position >= previousMain!.end &&
+				Boolean(nextMain) &&
+				nextMain!.start - waitStart > 1 &&
+				position >= waitStart &&
 				position < nextMain!.start
 
 			const currentLine = visibleLines.findIndex(line => position >= line.start && position <= line.end)
@@ -118,10 +119,15 @@ export async function runPlayer(cider: Cider, baseUrl: string, lyricsOffset: num
 				const nextMainIndex = visibleLines.indexOf(nextMain!)
 				const nextMainRow = nextMainIndex >= 0 ? lineRowStart[nextMainIndex]! : firstRow + rows.length
 				const insertAt = Math.max(0, Math.min(rows.length, nextMainRow - firstRow))
-				const pulse = Math.floor(Date.now() / 220) % 3
-				const dots = [0, 1, 2].map(i => (i === pulse ? "\x1b[97;1m.\x1b[0m" : "\x1b[90m.\x1b[0m")).join(" ")
-				const centered = `${" ".repeat(Math.max(0, Math.floor((width - terminalWidth(dots)) / 2)))}${dots}`
-				rows.splice(insertAt, 0, centered)
+				const progress = Math.max(0, Math.min(1, (position - waitStart) / (nextMain!.start - waitStart)))
+				const dots = [0, 1, 2]
+					.map(index => {
+						const dotProgress = Math.max(0, Math.min(1, progress * 3 - index))
+						const level = Math.round(90 + 165 * dotProgress)
+						return `\x1b[38;2;${level};${level};${level}m.\x1b[0m`
+					})
+					.join(" ")
+				rows.splice(insertAt, 0, placeVoiceLine(nextMain!, dots, width))
 			}
 			screen.push(...rows)
 		}
