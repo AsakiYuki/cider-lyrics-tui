@@ -1,38 +1,94 @@
-# cider-lyrics-cli
+# Cider Lyrics TUI
 
-CLI hiển thị lyrics đồng bộ với bài đang phát trong Cider. Dùng `cider-sdk`, nhận cập nhật playback qua Socket.IO/WebSocket và vẽ TUI trong alternate screen bằng Bun.
+A terminal lyrics display synchronized with the track playing in Cider. It reads Apple TTML lyrics from Cider and renders timed lyrics in a live terminal interface.
 
-## Chạy
+> **Requirement:** This tool is made for the **Cider 2 desktop app by Cider Collective**. Install Cider from [cider.sh](https://cider.sh), keep it running, and play a track there. This CLI connects to Cider's local API; it does not connect directly to Apple Music.
+
+## Features
+
+- Reads TTML from Cider and uses its timing instead of the separate word-timing field.
+- Highlights lyrics progressively from left to right, down to individual characters when timing is available.
+- Uses line timing as a fallback when word or span timing is unavailable.
+- Displays background vocals underneath the corresponding lead line and honors their timing.
+- Follows playback and track changes in real time.
+- Supports a playback display offset and exporting the current lyrics as Apple TTML.
+
+## Requirements
+
+- [Cider 2](https://cider.sh/) by Cider Collective, running with a track playing.
+- [Bun](https://bun.sh/) installed.
+- A terminal that supports ANSI colors and alternate-screen mode for the full-screen TUI.
+
+## Install
+
+Clone the repository and install dependencies:
 
 ```sh
+git clone https://github.com/AsakiYuki/cider-lyrics-tui.git
+cd cider-lyrics-tui
 bun install
+```
+
+## Authorize with Cider
+
+Request a Cider API token with the `lyrics` and `playback` scopes:
+
+```sh
 bun run start --auth
+```
+
+Approve the request in Cider. The token is saved to `~/.config/cider-lyrics/token` with user-only file permissions. If you have an older token without the `playback` scope, run the authorization command again.
+
+Alternatively, provide a token through the environment:
+
+```sh
+CIDER_API_TOKEN=your-token bun run start
+```
+
+## Usage
+
+Start the live lyrics display for the currently playing track:
+
+```sh
 bun run start
 ```
 
-Lệnh `--auth` mở hộp thoại cấp quyền của Cider và lưu token vào `~/.config/cider-lyrics/token` với quyền đọc/ghi riêng cho user. CLI cần scope `lyrics` để lấy lời và scope `playback` để đọc bài đang phát cùng vị trí hiện tại. Cider phải đang chạy trên máy.
+Press `Ctrl+C` to exit.
 
-Nếu token cũ chỉ có scope `lyrics`, chạy lại `bun run start --auth` để xin token mới có đủ hai scope.
-
-CLI đọc timing từ TTML của Cider, không dùng mảng `words`. TUI render mỗi 10 ms; playback được đồng bộ mỗi 100 ms và nội suy giữa các mẫu. Ký tự trong mỗi word/span fade từ xám sang trắng theo timing, quét lần lượt từ trái sang phải. Voice có số chẵn được căn phải; background vocal xuất hiện cùng lúc với dòng chính, thụt xuống dưới và tiếp tục fade theo timing riêng đến hết câu hát. TUI hiển thị nhiều dòng theo chiều cao terminal; khi gap giữa hai dòng lyrics dài hơn một giây, nó chèn `Chờ . . .` vào khoảng giữa và pulse từng dấu chấm. Lấy token bằng biến môi trường cũng được:
-
-```sh
-CIDER_API_TOKEN=... bun run start
-```
-
-Đặt offset đồng bộ khi lời chạy sớm hoặc trễ. Offset tính bằng giây và được cộng vào vị trí playback khi hiển thị; số dương làm lyrics chạy sớm hơn, số âm làm trễ hơn:
+Adjust lyric synchronization with an offset in seconds. A positive value makes the displayed lyrics advance earlier; a negative value delays them:
 
 ```sh
 bun run start --offset 0.25
 bun run start --offset=-0.15
+```
+
+You can also set a default offset with `CIDER_LYRICS_OFFSET`:
+
+```sh
 CIDER_LYRICS_OFFSET=0.25 bun run start
 ```
 
-Xuất TTML Apple cho bài hiện tại ra stdout hoặc file:
+Export the current track's Apple TTML to standard output or a file:
 
 ```sh
-bun run start --ttml > lyrics.ttml
+bun run start --ttml
 bun run start --ttml lyrics.ttml
 ```
 
-Đổi địa chỉ Cider API bằng `CIDER_URL` (mặc định `http://127.0.0.1:10767`).
+## Configuration
+
+| Variable              | Description                                           | Default                  |
+| --------------------- | ----------------------------------------------------- | ------------------------ |
+| `CIDER_API_TOKEN`     | Use an existing API token instead of the saved token. | —                        |
+| `CIDER_URL`           | Cider API base URL.                                   | `http://127.0.0.1:10767` |
+| `CIDER_LYRICS_OFFSET` | Display synchronization offset, in seconds.           | `0`                      |
+
+The Cider API URL can also be changed for a single invocation:
+
+```sh
+CIDER_URL=http://127.0.0.1:10767 bun run start
+```
+
+## How timing works
+
+The TUI refreshes on a local playback clock between periodic playback-time syncs, so lyric animation stays smooth without polling Cider on every frame. TTML timed spans drive the character-by-character fade. If Cider provides no usable timed spans, the CLI falls back to line-level timing.
