@@ -124,7 +124,11 @@ export async function runPlayer(cider: Cider, baseUrl: string, lyricsOffset: num
 					.map(index => {
 						const dotProgress = Math.max(0, Math.min(1, progress * 3 - index))
 						const level = Math.round(90 + 165 * dotProgress)
-						return `\x1b[38;2;${level};${level};${level}m.\x1b[0m`
+						const timeUntilLyrics = nextMain!.start - position
+						let symbol = dotProgress < 1 / 3 ? "." : dotProgress < 1 / 2 ? "o" : "0"
+						if (index === 2 && timeUntilLyrics > 0.05 && dotProgress >= 1 / 3) symbol = "o"
+						if (index === 2 && timeUntilLyrics <= 0.05) symbol = "0"
+						return `\x1b[38;2;${level};${level};${level}m${symbol}\x1b[0m`
 					})
 					.join(" ")
 				rows.splice(insertAt, 0, placeVoiceLine(nextMain!, dots, width))
